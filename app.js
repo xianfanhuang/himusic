@@ -98,11 +98,22 @@ function handleFiles(files) {
 
 /* ========== 网络直链 ========== */
 import {parsePage} from './parser.js';
-function loadURL() {
-  const url = document.getElementById('urlInput').value.trim();
-  if (!url) return;
-  const name = decodeURIComponent(url.split('/').pop());
-  addToPlaylist({ url, name });
+async function loadURL() {
+  const raw = document.getElementById('urlInput').value.trim();
+  if (!raw) return;
+
+  let item;
+  // 如果是直链 mp3/flac/m4a
+  if (/\.(mp3|flac|m4a|wav)(\?.*)?$/i.test(raw)) {
+    item = {url: raw, name: decodeURIComponent(raw.split('/').pop())};
+  } else {
+    // 交给 parser
+    const res = await parsePage(raw);
+    if (!res) return;
+    const name = new URL(raw).pathname.split('/').pop() || '未知';
+    item = {url: res.url, name, type: res.type};
+  }
+  addToPlaylist(item);
   playTrack(playlist.length - 1);
 }
 
