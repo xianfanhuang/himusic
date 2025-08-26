@@ -113,36 +113,34 @@ async function get163TrackUrl(id) {
   return json.data?.[0]?.url || null;
 }
 
-/* 通用解析入口 */
+/* ===== 通用解析（极简版） ===== */
 async function parsePage(pageUrl) {
-  try {
-    const url = new URL(pageUrl);
+  // 1️⃣ 如果是直链，直接返回
+  if (/\.(mp3|flac|m4a|wav|ogg)(\?.*)?$/i.test(pageUrl))
+    return [{ name: decodeURIComponent(pageUrl.split('/').pop()), url: pageUrl }];
 
-    /* 1. 网易云歌单 */
-    if (url.hostname.includes('music.163.com') && url.pathname.includes('/playlist')) {
-      const id = url.searchParams.get('id') || url.pathname.match(/playlist\/(\d+)/)?.[1];
-      if (!id) throw new Error('未找到歌单 ID');
-      const api = `https://music.163.com/api/playlist/detail?id=${id}`;
-      const json = await (await fetch(cors + api)).json();
-      const tracks = json.playlist?.tracks || [];
-      if (!tracks.length) throw new Error('歌单为空');
-      return tracks.map(t => ({
-        name: `${t.name} - ${t.ar?.[0]?.name || ''}`.trim(),
-        url: null,
-        id: t.id,
-        type: '163-track'
-      }));
-    }
+  // 2️⃣ 网易云单曲（官方无代理 API）
+  const m163 = pageUrl.match(/(?:song|m\/song)\?.*id=(\d+)/);
+  if (m163) {
+    const id = m163[1];
+    const api = `https://api.injahow.cn/meting/?type=url&id=${id}`;
+    const url = await (await fetch(api)).text();
+    if (!url || url.includes('error')) throw new Error('网易解析失败');
+    return [{ name: '网易云单曲', url }];
+  }
 
-    /* 2. 网易云单曲 */
-    if (url.hostname.includes('music.163.com') && url.pathname.includes('/song')) {
-      const id = url.searchParams.get('id') || url.pathname.match(/song\/(\d+)/)?.[1];
-      if (!id) throw new Error('未找到歌曲 ID');
-      const mp3 = await get163TrackUrl(id);
-      if (!mp3) throw new Error('获取直链失败');
-      return [{ name: '网易云单曲', url: mp3 }];
-    }
+  // 3️⃣ 网易云歌单（同一 API）
+  const pl163 = pageUrl.match(/(?:playlist|m\/playlist)\?.*id=(\d+)/);
+  if (pl163) {
+    const id = pl163[1];
+    const api = `https://api.injahow.cn/meting/?type=playlist&id=${id}`;
+    const list = await (await fetch(api)).json();
+    if (!Array.isArray(list) || !list.length) throw new Error('歌单为空');
+    return list.map(t => ({ name: `${t.name} - ${t.artist}`, url: t.url }));
+  }
 
+  throw new Error('暂不支持该站点');
+}
     /* 3. 其它站点（B站 / SoundCloud / YouTube HLS） */
     const RULES = [
       { host: /bilibili\.com|b23\.tv/, re: /"audio":\[{"id":\d+,"baseUrl":"([^"]+)"/ },
