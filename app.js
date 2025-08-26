@@ -103,25 +103,138 @@ function handleFiles(files) {
   if (playlist.length === files.length) playTrack(0);
 }
 
-/* ========== 网络直链 ========== */
-import {parsePage} from './parser.js';
+/* ========== 网络直链 & 页面解析 ========== */
+const cors = 'https://cors-anywhere.herokuapp.com/';
+
+/* 网易云：根据歌曲 id 取直链 */
+async function get163TrackUrl(id) {
+  const api = `https://music.163.com/api/song/enhance/player/url?ids=[${id}]&br=320000`;
+  const json = await (await fetch(cors + api)).json();
+  return json.data?.[0]?.url || null;
+}
+
+/* 通用解析入口 */
+async function parsePage(pageUrl) {
+  try {
+    const url = new URL(pageUrl);
+
+    /* 1. 网易云歌单 */
+    if (url.hostname.includes('music.163.com') && url.pathname.includes('/playlist')) {
+      const id = url.searchParams.get('id') || url.pathname.match(/playlist\/(\d+)/)?.[1];
+      if (!id) throw new Error('未找到歌单 ID');
+      const api = `https://music.163.com/api/playlist/detail?id=${id}`;
+      const json = await (await fetch(cors + api)).json();
+      const tracks = json.playlist?.tracks || [];
+      if (!tracks.length) throw new Error('歌单为空');
+      return tracks.map(t => ({
+        name: `${t.name} - ${t.ar?.[0]?.name || ''}`.trim(),
+        url: null,
+        id: t.id,
+        type: '163-track'
+      }));
+    }
+
+    /* 2. 网易云单曲 */
+    if (url.hostname.includes('music.163.com') && url.pathname.includes('/song')) {
+      const id = url.searchParams.get('id') || url.pathname.match(/song\/(\d+)/)?.[1];
+      if (!id) throw new Error('未找到歌曲 ID');
+      const mp3 = await get163TrackUrl(id);
+      if (!mp3) throw new Error('获取直链失败');
+      return [{ name: '网易云单曲', url: mp3 }];
+    }
+
+    /* 3. 其它站点（B站 / SoundCloud / YouTube HLS） */
+    const RULES = [
+      { host: /bilibili\.com|b23\.tv/, re: /"audio":\[{"id":\d+,"baseUrl":"([^"]+)"/ },
+      { host: /soundcloud\.com/,       re: /"transcodings".*?"url":"([^"]+)"/ },
+      { host: /youtube\.com|youtu\.be/, re: /"hlsManifestUrl":"([^"]+)"/ }
+    ];
+    const rule = RULES.find(r => r.host.test(url.hostname));
+    if (!rule) throw new Error('暂不支持该站点');
+    const html = await (await fetch(cors + pageUrl)).text();
+    let [, audioUrl] = html.match(rule.re) || [];
+    if (!audioUrl) throw new Error('未找到音频地址');
+    audioUrl = JSON.parse(`"${audioUrl}"`);
+    if (/soundcloud/.test(url.hostname)) {
+      const json = await (await fetch(cors + audioUrl)).json();
+      audioUrl = json.url;
+    }
+    return [{
+      name: '解析音频',
+      url: audioUrl,
+      type: /youtube/.test(url.hostname) ? 'hls' : 'mp3'
+    }];
+  } catch (e) {
+    alert('解析失败：' + e.message);
+    return null;
+  }
+}
+
+/* ========== 播放控制 ========== */
+audio.addEventListener('ended', () => {
+  current = (current + 1) % playlist.length;
+  playTrack(current);
+});
+
+async function playTrack(index) {
+  if (!playlist[index]) return;
+  current = index;
+  const item = playlist[index];
+
+  // 网易云 track：动态取直链
+  if (item.type === '163-track') {
+    item.url = await get163TrackUrl(item.id);
+    if (!item.url) return alert('获取直链失败');
+  }
+
+  // HLS 处理
+  if (item.type === 'hls' && window.Hls && Hls.isSupported()) {
+    const hls = new Hls();
+    hls.loadSource(item.url);
+    hls.attachMedia(audio);
+  } else {
+    audio.src = item.url;
+  }
+  audio.play();
+  document.title = '♪ ' + item.name;
+}
+
+/* ========== 本地文件处理 ========== */
+const fileInput = document.getElementById('fileInput');
+fileInput.addEventListener('change', e => handleFiles(e.target.files));
+
+const dropZone = document.getElementById('dropZone');
+['dragenter', 'dragover', 'drop'].forEach(evt =>
+  dropZone.addEventListener(evt, e => {
+    e.preventDefault();
+    if (evt === 'drop') handleFiles(e.dataTransfer.files);
+  })
+);
+
+function handleFiles(files) {
+  [...files].forEach(f => {
+    const url = URL.createObjectURL(f);
+    addToPlaylist({ name: f.name, url });
+  });
+  if (playlist.length === files.length) playTrack(0);
+}
+
+/* ========== 网络输入 ========== */
 async function loadURL() {
   const raw = document.getElementById('urlInput').value.trim();
   if (!raw) return;
 
-  let item;
-  // 如果是直链 mp3/flac/m4a
+  let list;
+  // 直链 mp3/flac/m4a
   if (/\.(mp3|flac|m4a|wav)(\?.*)?$/i.test(raw)) {
-    item = {url: raw, name: decodeURIComponent(raw.split('/').pop())};
+    list = [{ name: decodeURIComponent(raw.split('/').pop()), url: raw }];
   } else {
-    // 交给 parser
-    const res = await parsePage(raw);
-    if (!res) return;
-    const name = new URL(raw).pathname.split('/').pop() || '未知';
-    item = {url: res.url, name, type: res.type};
+    list = await parsePage(raw);
   }
-  addToPlaylist(item);
-  playTrack(playlist.length - 1);
+  if (!list) return;
+
+  list.forEach(addToPlaylist);
+  playTrack(playlist.length - list.length);
 }
 
 function addToPlaylist(item) {
@@ -132,7 +245,7 @@ function addToPlaylist(item) {
   playlistEl.appendChild(li);
 }
 
-/* ========== 首次点击解锁 AudioContext ========== */
+/* ========== 首次解锁 AudioContext ========== */
 document.body.addEventListener('click', () => {
   if (!analyser) initAudio();
 }, { once: true });
