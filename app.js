@@ -97,6 +97,7 @@ function handleFiles(files) {
 }
 
 /* ========== 网络直链 ========== */
+import {parsePage} from './parser.js';
 function loadURL() {
   const url = document.getElementById('urlInput').value.trim();
   if (!url) return;
