@@ -71,11 +71,18 @@ audio.addEventListener('ended', () => {
 function playTrack(index) {
   if (!playlist[index]) return;
   current = index;
-  audio.src = playlist[index].url;
-  audio.play();
-  document.title = '♪ ' + playlist[index].name;
-}
+  const {url, type} = playlist[index];
 
+  // 如果是 HLS
+  if (type === 'hls' && window.Hls && Hls.isSupported()) {
+    const hls = new Hls();
+    hls.loadSource(url);
+    hls.attachMedia(audio);
+  } else {
+    audio.src = url;
+  }
+  audio.play();
+}
 /* ========== 本地文件处理 ========== */
 const fileInput = document.getElementById('fileInput');
 fileInput.addEventListener('change', e => handleFiles(e.target.files));
