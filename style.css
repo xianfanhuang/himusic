@@ -1,0 +1,9 @@
+*{margin:0;padding:0;box-sizing:border-box;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto}
+body{background:#000;color:#fff;overflow:hidden;text-align:center}
+h1{position:absolute;top:12px;left:50%;transform:translateX(-50%);font-size:18px;letter-spacing:2px;z-index:10}
+#dropZone{position:absolute;top:60px;left:50%;transform:translateX(-50%);z-index:10;font-size:14px}
+#dropZone>*{margin:4px}
+#canvas{position:fixed;top:0;left:0;width:100%;height:100%}
+#playlist{position:absolute;bottom:10px;left:50%;transform:translateX(-50%);max-height:30vh;overflow:auto}
+#playlist li{cursor:pointer;padding:4px 8px;border-radius:4px}
+#playlist li:hover{background:#ffffff22}
