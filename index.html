@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <title>呼吸·音乐可视化</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <link rel="stylesheet" href="style.css"/>
+  <link rel="manifest" href="data:application/manifest+json,{&q;name&q;:&q;Breath Player&q;,&q;display&q;:&q;standalone&q;}"/>
+</head>
+<body>
+  <h1>呼吸·Breath Player</h1>
+
+  <div id="dropZone">拖入音频文件 / 文件夹<br>
+    <input type="file" id="fileInput" accept="audio/*" multiple hidden>
+    <button onclick="fileInput.click()">本地选择</button>
+    <input id="urlInput" placeholder="或输入网络音频直链">
+    <button onclick="loadURL()">播放</button>
+  </div>
+
+  <canvas id="canvas"></canvas>
+
+  <ul id="playlist"></ul>
+
+  <audio id="audio" crossOrigin="anonymous"></audio>
+
+  <script src="app.js"></script>
+</body>
+</html>
